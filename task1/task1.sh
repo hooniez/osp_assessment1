@@ -1,1 +1,2 @@
-echo "Hello"
+#!/bin/bash
+echo "Hello Wrold!"
