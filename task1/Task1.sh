@@ -8,7 +8,7 @@ string=`LC_ALL=C awk 'length($0) >= 3 && length($0) <= 15' ../input.txt | awk '/
 arr=($string)
 
 numRowsAndCols=$(echo "${#arr[@]}" | awk '{print int(sqrt($1))}');
-
+echo $numRowsAndCols;
 
 # Create a 2D array
 declare -A matrix
@@ -46,7 +46,7 @@ do
 		else
 			finalArr[$index]=$value;
 			((index++));
-			echo $value;
+			#echo $value;
 		fi
 	done
 done;
