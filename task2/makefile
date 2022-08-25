@@ -1,10 +1,10 @@
 CC=g++
 
-all: task2.o
-	$(CC) -Wall -Werror -std=c++14 -o task2 task2.o
+all: Task2.o
+	$(CC) -Wall -Werror -std=c++14 -o Task2 Task2.o
 
-task2.o: task2.cpp
-	g++ -c task2.cpp
+Task2.o: Task2.cpp
+	g++ -c Task2.cpp
 
 clean:
-	rm *.o task2;
+	rm *.o Task2;
