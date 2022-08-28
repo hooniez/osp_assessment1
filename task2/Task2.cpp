@@ -25,7 +25,7 @@ void reduce(const std::string & finalOutput) {
         inputFiles.push_back(std::make_shared<std::ifstream>(filename.str()));
     }
 
-    // Store the first word from each ifstream in words
+    // Store the first word from each ifstream
     std::string line;
     std::vector<std::string> words;
     std::vector<int> indicesToErase;
@@ -39,9 +39,10 @@ void reduce(const std::string & finalOutput) {
 
     // If there were any empty files, remove the corresponding positions from inputFiles and words
     for (auto indexToErase: indicesToErase) {
+        inputFiles[indexToErase]->close();
         inputFiles.erase(inputFiles.begin() + indexToErase);
         words.erase(words.begin() + indexToErase);
-        inputFiles[indexToErase]->close();
+
     }
 
     // Write the lowest word in lexical order to a file
@@ -50,7 +51,7 @@ void reduce(const std::string & finalOutput) {
     while (!inputFiles.empty()) {
         // Find the actual index that contains the lowest word in lexical order
         for (int i = 0; i < words.size(); ++i) {
-            if (words[i].substr(MIN_WORD_LENGTH - 1) < words[lowestOrderIdx].substr(MIN_WORD_LENGTH - 1)) {
+            if (words[i].compare(MIN_WORD_LENGTH - 1, words[i].size() - (MIN_WORD_LENGTH - 1), words[lowestOrderIdx], MIN_WORD_LENGTH - 1, words[lowestOrderIdx].size() - (MIN_WORD_LENGTH - 1)) < 0) {
                 lowestOrderIdx = i;
             }
         }
@@ -61,18 +62,17 @@ void reduce(const std::string & finalOutput) {
         if (std::getline(*inputFiles[lowestOrderIdx], line)) {
             words[lowestOrderIdx] = line;
         } else {
-
+            inputFiles[lowestOrderIdx]->close();
             inputFiles.erase(inputFiles.begin() + lowestOrderIdx);
             words.erase(words.begin() + lowestOrderIdx);
             lowestOrderIdx = 0;
-            inputFiles[lowestOrderIdx]->close();
         }
     }
 
     outputFile.close();
 }
 
-void map2(const std::vector<std::string> * wordVec, const std::string & finalOutput) {
+void map2(const std::vector<std::string> *wordVec, const std::string & finalOutput) {
     std::vector<std::string> wordVec3;
     std::vector<std::string> wordVec4;
     std::vector<std::string> wordVec5;
@@ -141,9 +141,9 @@ void map2(const std::vector<std::string> * wordVec, const std::string & finalOut
             perror("fork failed.");
             exit(1);
         } else if (pid == 0) {
-            std::stable_sort(word2dVec[i].begin(), word2dVec[i].end(),
+            std::sort(word2dVec[i].begin(), word2dVec[i].end(),
                              [](const std::string &a, const std::string &b) {
-			return a.substr(MIN_WORD_LENGTH - 1) < b.substr(MIN_WORD_LENGTH - 1);
+                return a.compare(MIN_WORD_LENGTH - 1, a.size() - (MIN_WORD_LENGTH - 1), b, MIN_WORD_LENGTH - 1, b.size() - (MIN_WORD_LENGTH - 1)) < 0;
 		    });
 
             std::ofstream output("output" + std::to_string(i) + ".txt");
@@ -171,5 +171,4 @@ int main(int argc, char *argv[]) {
     }
     std::vector<std::string> wordVec = Task1Filter(argv[1]);
     map2(&wordVec, argv[2]);
-
 }
