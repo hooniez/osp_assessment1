@@ -13,6 +13,7 @@
 #include <cerrno>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/syscall.h>
 
 #include <vector>
 #include "../task1/Task1Filter.cpp"
@@ -39,6 +40,9 @@ void* sort3(void *arg) {
     std::sort(iVec->begin(), iVec->end(), [] (const int a, const int b) {
         return wordVec[a].compare(MIN_WORD_LENGTH - 1, wordVec[a].size() - (MIN_WORD_LENGTH - 1), wordVec[b], MIN_WORD_LENGTH - 1, wordVec[b].size() - (MIN_WORD_LENGTH - 1)) < 0;
     });
+
+    pid_t x = syscall(__NR_gettid);
+    std::cout << "sort3 | the thread id for fifo " << wordVec[*iVec->begin()].length() << " is: " << x << std::endl;
 
     // Create a FIFO file for write
     pthread_mutex_lock(&mutexFileNames);
@@ -77,11 +81,13 @@ void* sort3(void *arg) {
 }
 
 void* reduce3(void *arg) {
+    pid_t x = syscall(__NR_gettid);
+    std::cout << "reduce3 | the thread id " << " is: " << x << std::endl;
+
     pthread_mutex_lock(&mutexFileNames);
     // Repeat the while loop as long as there is a file to read from map3()
     while (fileNames.size() != NUM_MAP_THREADS) {
         pthread_cond_wait(&condFileNameRead, &mutexFileNames);
-        std::cout << "Not all the files have been read" << std::endl;
         // pthread_cond_wait is equivalent to:
         // pthread_mutex_unlock(&mutexFileNames);
         // wait for signal on condFileNameRead;
@@ -153,6 +159,8 @@ void* reduce3(void *arg) {
 
 
 void* map3(void* a) {
+    pid_t x = syscall(__NR_gettid);
+    std::cout << "map3 | the thread id " << " is: " << x << std::endl;
     // Create 13 index arrays
     std::vector<std::vector<int>> iVecs;
     for (int i = 0; i < NUM_INDEX_ARRAYS; ++i) {
@@ -188,6 +196,8 @@ void* map3(void* a) {
 
 
 int main(int argc, char* argv[]) {
+    pid_t x = syscall(__NR_gettid);
+    std::cout << "main | the thread id " << " is: " << x << std::endl;
     if (argc != 3) {
         std::cout << "Correct Usage: ./task2 DirtyFile CleanFile" << std::endl;
         exit(1);

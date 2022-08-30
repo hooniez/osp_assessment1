@@ -4,17 +4,17 @@
   <component name="MakefileSettings">
     <option name="linkedExternalProjectsSettings">
       <MakefileProjectSettings>
-        <option name="externalProjectPath" value="$PROJECT_DIR$/task2" />
+        <option name="externalProjectPath" value="$PROJECT_DIR$/playground" />
         <option name="modules">
           <set>
-            <option value="$PROJECT_DIR$/task2" />
+            <option value="$PROJECT_DIR$/playground" />
           </set>
         </option>
         <option name="version" value="2" />
       </MakefileProjectSettings>
     </option>
   </component>
-  <component name="MakefileWorkspace" PROJECT_DIR="$PROJECT_DIR$/task2">
+  <component name="MakefileWorkspace" PROJECT_DIR="$PROJECT_DIR$/playground">
     <contentRoot DIR="$PROJECT_DIR$" />
   </component>
 </project>

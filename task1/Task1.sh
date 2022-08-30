@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Select words of 3 to 15 characters that are all from the English alphabet.
-awk '/^[a-zA-Z]+$/' ../input.txt  | sort --unique > ../filtered_bash.txt
+# Select words whose letters all from the English alphabet.
+awk '/^[a-zA-Z]+$/' ../original_data/combined.txt  | sort --unique > ../input_bash.txt
 
 # I have spent extra hours to ensure the script's shuffled outcome is identical to that of its equivalent program in C++.
 # It was only after my great effort that I found out the code below is useless because of the requirement to shuffle has turned out to be unnecessary at odds with what the specification initially required.

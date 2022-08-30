@@ -11,9 +11,3 @@ for (( index=startIndex; index <= endIndex; index++ ))
 do
   cat "wlist_match$index.txt" >> $fileName
 done
-
-
-# Shuffle combined.txt and output numWords words
-#numWords=1000000
-#shuf $fileName -n $numWords > "../input.txt"
-shuf $fileName > "../input.txt"
