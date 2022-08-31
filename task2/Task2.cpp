@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <sys/single_threaded.h>
 
 #include "../task1/Task1Filter.cpp"
 
@@ -73,6 +74,8 @@ void reduce(const std::string & finalOutput) {
 }
 
 void map2(const std::vector<std::string> *wordVec, const std::string & finalOutput) {
+
+
     std::vector<std::string> wordVec3;
     std::vector<std::string> wordVec4;
     std::vector<std::string> wordVec5;
@@ -141,6 +144,9 @@ void map2(const std::vector<std::string> *wordVec, const std::string & finalOutp
             perror("fork failed.");
             exit(1);
         } else if (pid == 0) {
+            pid_t processId = getpid();
+            std::cout << "map | the process id for " << word2dVec[i][0].size() << " letter words is: " << processId << std::endl;
+
             std::sort(word2dVec[i].begin(), word2dVec[i].end(),
                              [](const std::string &a, const std::string &b) {
                 return a.compare(MIN_WORD_LENGTH - 1, a.size() - (MIN_WORD_LENGTH - 1), b, MIN_WORD_LENGTH - 1, b.size() - (MIN_WORD_LENGTH - 1)) < 0;
@@ -156,7 +162,7 @@ void map2(const std::vector<std::string> *wordVec, const std::string & finalOutp
 
     }
 
-    printf("Parent waits on child process\n");
+
     for (int i = 0; i < NUM_CHILDREN; ++i) {
         wait(NULL);
     }
@@ -165,6 +171,8 @@ void map2(const std::vector<std::string> *wordVec, const std::string & finalOutp
 }
 
 int main(int argc, char *argv[]) {
+    pid_t processId = getpid();
+    std::cout << "main | the process id " << " is: " << processId << std::endl;
     if (argc != 3) {
         std::cout << "Correct Usage: ./task2 DirtyFile CleanFile" << std::endl;
         exit(1);

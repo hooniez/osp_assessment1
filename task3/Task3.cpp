@@ -34,7 +34,7 @@ inline int getBytesToRead(const std::string& fileName) {
     return stoi(fileName.substr(4,fileName.size() - 4)) + 1;
 }
 
-void* sort3(void *arg) {
+void* sort4(void *arg) {
     auto* iVec = (std::vector<int>*)arg;
     // Sort the index array
     std::sort(iVec->begin(), iVec->end(), [] (const int a, const int b) {
@@ -42,7 +42,7 @@ void* sort3(void *arg) {
     });
 
     pid_t x = syscall(__NR_gettid);
-    std::cout << "sort3 | the thread id for fifo " << wordVec[*iVec->begin()].length() << " is: " << x << std::endl;
+    std::cout << "sort4 | the thread id for fifo " << wordVec[*iVec->begin()].length() << " is: " << x << std::endl;
 
     // Create a FIFO file for write
     pthread_mutex_lock(&mutexFileNames);
@@ -55,7 +55,7 @@ void* sort3(void *arg) {
         }
     }
 
-    // Store the file names and send a signal to the reduce3 thread
+    // Store the file names and send a signal to the reduce4 thread
     fileNames.emplace_back(fileName);
     pthread_mutex_unlock(&mutexFileNames);
     pthread_cond_signal(&condFileNameRead);
@@ -80,12 +80,12 @@ void* sort3(void *arg) {
     return arg;
 }
 
-void* reduce3(void *arg) {
+void* reduce4(void *arg) {
     pid_t x = syscall(__NR_gettid);
-    std::cout << "reduce3 | the thread id " << " is: " << x << std::endl;
+    std::cout << "reduce4 | the thread id " << " is: " << x << std::endl;
 
     pthread_mutex_lock(&mutexFileNames);
-    // Repeat the while loop as long as there is a file to read from map3()
+    // Repeat the while loop as long as there is a file to read from map4()
     while (fileNames.size() != NUM_MAP_THREADS) {
         pthread_cond_wait(&condFileNameRead, &mutexFileNames);
         // pthread_cond_wait is equivalent to:
@@ -158,9 +158,9 @@ void* reduce3(void *arg) {
 }
 
 
-void* map3(void* a) {
+void* map4(void* a) {
     pid_t x = syscall(__NR_gettid);
-    std::cout << "map3 | the thread id " << " is: " << x << std::endl;
+    std::cout << "map4 | the thread id " << " is: " << x << std::endl;
     // Create 13 index arrays
     std::vector<std::vector<int>> iVecs;
     for (int i = 0; i < NUM_INDEX_ARRAYS; ++i) {
@@ -176,10 +176,10 @@ void* map3(void* a) {
         }
     }
 
-    // Create 13 threads for map3
+    // Create 13 threads for map4
     pthread_t th[NUM_MAP_THREADS];
     for (int i = 0; i < NUM_MAP_THREADS; ++i) {
-        if (pthread_create(th + i, nullptr, &sort3, &iVecs[i]) != 0) {
+        if (pthread_create(th + i, nullptr, &sort4, &iVecs[i]) != 0) {
             perror("Failed to create thread");
         }
     }
@@ -205,23 +205,23 @@ int main(int argc, char* argv[]) {
     // Assign the global vector of strings, wordVec
     wordVec = Task1Filter(argv[1]);
 
-    // Create two threads for map3() and reduce3()
+    // Create two threads for map4() and reduce4()
     pthread_t mapThread, reduceThread;
     pthread_mutex_init(&mutexFileNames, nullptr);
     pthread_cond_init(&condFileNameRead, nullptr);
-    if (pthread_create(&mapThread, nullptr, &map3, nullptr) != 0) {
-        perror("Failed to create map3 thread");
+    if (pthread_create(&mapThread, nullptr, &map4, nullptr) != 0) {
+        perror("Failed to create map4 thread");
     }
-    if (pthread_create(&reduceThread, nullptr, &reduce3, argv[2]) != 0) {
-        perror("Failed to create reduce3 thread");
+    if (pthread_create(&reduceThread, nullptr, &reduce4, argv[2]) != 0) {
+        perror("Failed to create reduce4 thread");
     }
 
     // Join two of the threads above
     if (pthread_join(mapThread, nullptr) != 0) {
-        perror("Failed to join map3 thread");
+        perror("Failed to join map4 thread");
     }
     if (pthread_join(reduceThread, nullptr) != 0) {
-        perror("Failed to join reduce3 thread");
+        perror("Failed to join reduce4 thread");
     }
     pthread_mutex_destroy(&mutexFileNames);
     pthread_cond_destroy(&condFileNameRead);

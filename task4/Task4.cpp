@@ -6,8 +6,8 @@
 #define MAX_WORD_LENGTH 15
 #define NUM_MAP_THREADS 13
 #define NUM_INDEX_ARRAYS 13
-#define NICEST_VALUE 20
-#define MEANSEST_VALUE -19
+#define NICEST_VALUE 19
+
 
 #include <pthread.h>
 #include <sys/stat.h>
@@ -16,14 +16,12 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/syscall.h>
-#include <sys/time.h>
 #include <sys/resource.h>
 
 #include <vector>
 #include "../task1/Task1Filter.cpp"
 #include <algorithm>
 #include <sstream>
-#include <cstring>
 #include <map>
 
 pthread_mutex_t mutexFileNames;
@@ -32,14 +30,15 @@ pthread_cond_t condFileNameRead;
 std::vector<std::string> fileNames;
 std::vector<std::string> wordVec;
 
-std::map<int, int> niceValuesBeforeFIFO = {{3, 2}, {4, 1}, {5, 1}, {6, 0},
-                                           {7, 0}, {8, 0}, {9, 0}, {10, 1},
-                                           {11, 1}, {12, 1 }, {13, 2}, {14, 2},
-                                           {15, 2}};
-std::map<int, int> niceValuesAfterFIFO = {{3,  1}, {4, 1}, {5, 1}, {6, 1},
-                                          {7,  1}, {8, 1}, {9, 1}, {10, 1},
-                                          {11, 1}, {12, 1}, {13, 1}, {14, 1},
-                                          {15, 1}};
+std::map<int, int> niceValuesBeforeFIFO = {{3, 19}, {4, 7}, {5, 3}, {6, 1},
+                                           {7, 0}, {8, 1}, {9, 0}, {10, 3},
+                                           {11, 6}, {12, 7 }, {13, 13}, {14, 14},
+                                           {15, 19}};
+
+std::map<int, int> initialNiceValues = {{3, 12}, {4, 7}, {5, 2}, {6, 1},
+                                           {7, 0}, {8, 1}, {9, 1}, {10, 2},
+                                           {11, 3}, {12, 4 }, {13, 7}, {14, 7},
+                                           {15, 9}};
 
 inline int getBytesToRead(const std::string& fileName) {
     // Every file to be passed as an argument will start with 'fifo'.
@@ -55,22 +54,17 @@ void* sort4(void *arg) {
     pid_t tid = syscall(__NR_gettid);
     std::cout << "sort4 | the thread id for fifo " << wordLength << " is: " << tid << std::endl;
 
-//    if (setpriority(PRIO_PROCESS, tid, niceValuesBeforeFIFO.at(wordLength)) == -1) {
-//        perror("Couldn't set priority before FIFO is open for writing");
-//    } else {
-//        std::cout << "Priority for fifo " << wordLength << " before FIFO is: " << getpriority(PRIO_PROCESS,tid) << std::endl;
-//    }
+    if (nice(initialNiceValues.at(wordLength)) == -1) {
+        perror("Failed to set the nice value");
+    } else {
+        std::cout << "Thread " << wordLength << ": " << getpriority(PRIO_PROCESS, tid) << std::endl;
+    }
 
     // Sort the index array
     std::sort(iVec->begin(), iVec->end(), [] (const int a, const int b) {
         return wordVec[a].compare(MIN_WORD_LENGTH - 1, wordVec[a].size() - (MIN_WORD_LENGTH - 1), wordVec[b], MIN_WORD_LENGTH - 1, wordVec[b].size() - (MIN_WORD_LENGTH - 1)) < 0;
     });
 
-//    if (setpriority(PRIO_PROCESS, tid, 20) == -1) {
-//        perror("Couldn't set priority before FIFO is open for writing");
-//    } else {
-//        std::cout << "Priority for fifo " << wordLength << " before FIFO is: " << getpriority(PRIO_PROCESS,tid) << std::endl;
-//    }
 
     // Create a FIFO file for write
     pthread_mutex_lock(&mutexFileNames);
@@ -88,17 +82,14 @@ void* sort4(void *arg) {
     pthread_mutex_unlock(&mutexFileNames);
     pthread_cond_signal(&condFileNameRead);
 
+    if (nice(NICEST_VALUE) == -1) {
+        perror("Failed to set the nice value");
+    }
 
     int fd = open(fileName, O_WRONLY );
     if (fd == -1) {
         perror("Error in opening a FIFO file");
     }
-
-//    if (setpriority(PRIO_PROCESS, tid, niceValuesAfterFIFO.at(wordLength)) == -1) {
-//        perror("Couldn't set priority before FIFO is open for writing");
-//    } else {
-//        std::cout << "Priority for fifo " << wordLength << " before FIFO is: " << getpriority(PRIO_PROCESS,tid) << std::endl;
-//    }
 
     // Write words to fifo
     for (auto const i : *iVec) {
@@ -127,9 +118,7 @@ void* reduce4(void *arg) {
         // wait for signal on condFileNameRead;
         // pthread_mutex_lock(&mutexFileNames);
     }
-//    if (setpriority(PRIO_PROCESS, tid, MEANSEST_VALUE) == -1) {
-//        perror("Couldn't set priority before FIFO is open for writing");
-//    }
+
     // Convert each file name into a file descriptor and store it in fds
     std::vector<int> fds;
     for (const auto &fileName: fileNames) {
@@ -222,6 +211,11 @@ void* map4(void* a) {
         if (pthread_create(th + i, nullptr, &sort4, &iVecs[orderOfThreads[i]]) != 0) {
             perror("Failed to create thread");
         }
+    }
+
+    // After spawning the threads above, map4() has now done its duties. Set its nice value to 10.
+    if (nice(NICEST_VALUE) == -1) {
+        perror("Failed to set the nice value");
     }
 
     // Join the threads
