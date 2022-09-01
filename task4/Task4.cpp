@@ -17,6 +17,7 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 #include <sys/resource.h>
+#include <chrono>
 
 #include <vector>
 #include "../task1/Task1Filter.cpp"
@@ -30,15 +31,15 @@ pthread_cond_t condFileNameRead;
 std::vector<std::string> fileNames;
 std::vector<std::string> wordVec;
 
-std::map<int, int> niceValuesBeforeFIFO = {{3, 19}, {4, 7}, {5, 3}, {6, 1},
-                                           {7, 0}, {8, 1}, {9, 0}, {10, 3},
-                                           {11, 6}, {12, 7 }, {13, 13}, {14, 14},
-                                           {15, 19}};
+//std::map<int, int> tweakedNiceValues = {{3,  19}, {4, 7}, {5, 3}, {6, 1},
+//                                        {7,  0}, {8, 1}, {9, 0}, {10, 3},
+//                                        {11, 6}, {12, 7 }, {13, 13}, {14, 14},
+//                                        {15, 19}};
 
-std::map<int, int> initialNiceValues = {{3, 12}, {4, 7}, {5, 2}, {6, 1},
-                                           {7, 0}, {8, 1}, {9, 1}, {10, 2},
-                                           {11, 3}, {12, 4 }, {13, 7}, {14, 7},
-                                           {15, 9}};
+//std::map<int, int> initialNiceValues = {{3, 12}, {4, 7}, {5, 2}, {6, 1},
+//                                           {7, 0}, {8, 1}, {9, 1}, {10, 2},
+//                                           {11, 3}, {12, 4 }, {13, 7}, {14, 7},
+//                                           {15, 9}};
 
 inline int getBytesToRead(const std::string& fileName) {
     // Every file to be passed as an argument will start with 'fifo'.
@@ -54,16 +55,19 @@ void* sort4(void *arg) {
     pid_t tid = syscall(__NR_gettid);
     std::cout << "sort4 | the thread id for fifo " << wordLength << " is: " << tid << std::endl;
 
-    if (nice(initialNiceValues.at(wordLength)) == -1) {
-        perror("Failed to set the nice value");
-    } else {
-        std::cout << "Thread " << wordLength << ": " << getpriority(PRIO_PROCESS, tid) << std::endl;
-    }
+    // Change the nice values
+//    if (nice(tweakedNiceValues.at(wordLength)) == -1) {
+//        perror("Failed to set the nice value");
+//    }
 
+    auto start = std::chrono::high_resolution_clock::now();
     // Sort the index array
     std::sort(iVec->begin(), iVec->end(), [] (const int a, const int b) {
         return wordVec[a].compare(MIN_WORD_LENGTH - 1, wordVec[a].size() - (MIN_WORD_LENGTH - 1), wordVec[b], MIN_WORD_LENGTH - 1, wordVec[b].size() - (MIN_WORD_LENGTH - 1)) < 0;
     });
+    auto stop = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+    std::cout << "Thread " << wordLength << " of size " << iVec->size() << " took " << duration.count() << " microseconds" << std::endl;
 
 
     // Create a FIFO file for write
@@ -82,6 +86,7 @@ void* sort4(void *arg) {
     pthread_mutex_unlock(&mutexFileNames);
     pthread_cond_signal(&condFileNameRead);
 
+    // Change the nice values to 19 as this thread will be IO bound for the remainder of the program
     if (nice(NICEST_VALUE) == -1) {
         perror("Failed to set the nice value");
     }
