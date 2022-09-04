@@ -1,0 +1,10 @@
+CC=g++
+
+all: Task5.o
+	$(CC) -O2 -Wall -Werror -std=c++14 -pthread -o Task5 Task5.o
+
+Task5.o: Task5.cpp ../task1/Task1Filter.cpp
+	$(CC) -O2 -c Task5.cpp ../task1/Task1Filter.cpp
+
+clean:
+	rm *.o Task4;
