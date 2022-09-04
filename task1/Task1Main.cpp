@@ -7,10 +7,13 @@
 
 int main(int argc, char *argv[]) {
     if (argc != 3) {
-        std::cout << "Correct Usage: ./Task1filter DirtyFile CleanFile" << std::endl;
+        std::cout << "Correct Usage: ./Task1Filter DirtyFile CleanFile" << std::endl;
         exit(1);
     }
-    std::vector<std::string> finalVec = Task1Filter(argv[1]);
+
+    std::ifstream input (argv[1]);
+    std::vector<std::string> finalVec = Task1Filter(input);
+    input.close();
 
     const std::string writeFileName = argv[2];
     std::ofstream output(writeFileName);

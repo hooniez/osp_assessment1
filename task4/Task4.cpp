@@ -48,12 +48,12 @@ inline int getBytesToRead(const std::string& fileName) {
     return stoi(fileName.substr(4,fileName.size() - 4)) + 1;
 }
 
-void* sort4(void *arg) {
+void* sort5(void *arg) {
     auto* iVec = (std::vector<int>*)arg;
     int wordLength = wordVec[*iVec->begin()].length();
 
     pid_t tid = syscall(__NR_gettid);
-    std::cout << "sort4 | the thread id for fifo " << wordLength << " is: " << tid << std::endl;
+    std::cout << "sort5 | the thread id for fifo " << wordLength << " is: " << tid << std::endl;
 
     // Change the nice values
 //    if (nice(tweakedNiceValues.at(wordLength)) == -1) {
@@ -81,7 +81,7 @@ void* sort4(void *arg) {
         }
     }
 
-    // Store the file names and send a signal to the reduce4 thread
+    // Store the file names and send a signal to the reduce5 thread
     fileNames.emplace_back(fileName);
     pthread_mutex_unlock(&mutexFileNames);
     pthread_cond_signal(&condFileNameRead);
@@ -93,7 +93,7 @@ void* sort4(void *arg) {
 
     int fd = open(fileName, O_WRONLY );
     if (fd == -1) {
-        perror("Error in opening a FIFO file");
+        perror("Error in opening a FIFO file reading");
     }
 
     // Write words to fifo
@@ -110,12 +110,12 @@ void* sort4(void *arg) {
     return arg;
 }
 
-void* reduce4(void *arg) {
+void* reduce5(void *arg) {
     pid_t tid = syscall(__NR_gettid);
-    std::cout << "reduce4 | the thread id " << " is: " << tid << std::endl;
+    std::cout << "reduce5 | the thread id " << " is: " << tid << std::endl;
 
     pthread_mutex_lock(&mutexFileNames);
-    // Repeat the while loop as long as there is a file to read from map4()
+    // Repeat the while loop as long as there is a file to read from map5()
     while (fileNames.size() != NUM_MAP_THREADS) {
         pthread_cond_wait(&condFileNameRead, &mutexFileNames);
         // pthread_cond_wait is equivalent to:
@@ -189,9 +189,9 @@ void* reduce4(void *arg) {
 }
 
 
-void* map4(void* a) {
+void* map5(void* a) {
     pid_t x = syscall(__NR_gettid);
-    std::cout << "map4 | the thread id " << " is: " << x << std::endl;
+    std::cout << "map5 | the thread id " << " is: " << x << std::endl;
     // Create 13 index arrays
     std::vector<std::vector<int>> iVecs;
     for (int i = 0; i < NUM_INDEX_ARRAYS; ++i) {
@@ -210,15 +210,15 @@ void* map4(void* a) {
     // Create threads such that the longer it takes for an index array to be sorted, the earlier its thread starts
     std::vector<int> orderOfThreads = {4, 6, 3, 5, 2, 7, 8, 9, 1, 10, 11, 12, 0};
 
-    // Create 13 threads for map4
+    // Create 13 threads for map5
     pthread_t th[NUM_MAP_THREADS];
     for (int i = 0; i < NUM_MAP_THREADS; ++i) {
-        if (pthread_create(th + i, nullptr, &sort4, &iVecs[orderOfThreads[i]]) != 0) {
+        if (pthread_create(th + i, nullptr, &sort5, &iVecs[orderOfThreads[i]]) != 0) {
             perror("Failed to create thread");
         }
     }
 
-    // After spawning the threads above, map4() has now done its duties. Set its nice value to 10.
+    // After spawning the threads above, map5() has now done its duties. Set its nice value to 10.
     if (nice(NICEST_VALUE) == -1) {
         perror("Failed to set the nice value");
     }
@@ -238,29 +238,31 @@ int main(int argc, char* argv[]) {
     pid_t x = syscall(__NR_gettid);
     std::cout << "main | the thread id " << " is: " << x << std::endl;
     if (argc != 3) {
-        std::cout << "Correct Usage: ./task2 DirtyFile CleanFile" << std::endl;
+        std::cout << "Correct Usage: ./Task4 DirtyFile CleanFile" << std::endl;
         exit(1);
     }
     // Assign the global vector of strings, wordVec
-    wordVec = Task1Filter(argv[1]);
+    std::ifstream input(argv[1]);
+    wordVec = Task1Filter(input);
+    input.close();
 
-    // Create two threads for map4() and reduce4()
+    // Create two threads for map5() and reduce5()
     pthread_t mapThread, reduceThread;
     pthread_mutex_init(&mutexFileNames, nullptr);
     pthread_cond_init(&condFileNameRead, nullptr);
-    if (pthread_create(&mapThread, nullptr, &map4, nullptr) != 0) {
-        perror("Failed to create map4 thread");
+    if (pthread_create(&mapThread, nullptr, &map5, nullptr) != 0) {
+        perror("Failed to create map5 thread");
     }
-    if (pthread_create(&reduceThread, nullptr, &reduce4, argv[2]) != 0) {
-        perror("Failed to create reduce4 thread");
+    if (pthread_create(&reduceThread, nullptr, &reduce5, argv[2]) != 0) {
+        perror("Failed to create reduce5 thread");
     }
 
     // Join two of the threads above
     if (pthread_join(mapThread, nullptr) != 0) {
-        perror("Failed to join map4 thread");
+        perror("Failed to join map5 thread");
     }
     if (pthread_join(reduceThread, nullptr) != 0) {
-        perror("Failed to join reduce4 thread");
+        perror("Failed to join reduce5 thread");
     }
     pthread_mutex_destroy(&mutexFileNames);
     pthread_cond_destroy(&condFileNameRead);

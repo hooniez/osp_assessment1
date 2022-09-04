@@ -15,10 +15,9 @@
 // Task1Filter returns a vector of words that are filtered by the rule mentioned in README.md
 // This function signature is required to implement Task 3 as specified in its first bullet point.
 // Task1Filter utilises named return value optimisation
-std::vector<std::string> Task1Filter(const std::string &readFileName) {
+std::vector<std::string> Task1Filter(std::istream& input) {
     std::string line;
     std::vector<std::string> wordVec;
-    std::ifstream input(readFileName);
 
     while (std::getline(input, line)) {
         // Only insert words that contain English lower characters
@@ -32,8 +31,6 @@ std::vector<std::string> Task1Filter(const std::string &readFileName) {
             wordVec.push_back(line);
         }
     }
-
-    input.close();
 
     std::sort(wordVec.begin(), wordVec.end());
     wordVec.erase(unique(wordVec.begin(), wordVec.end()), wordVec.end());

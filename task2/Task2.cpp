@@ -174,9 +174,12 @@ int main(int argc, char *argv[]) {
     pid_t processId = getpid();
     std::cout << "main | the process id " << " is: " << processId << std::endl;
     if (argc != 3) {
-        std::cout << "Correct Usage: ./task2 DirtyFile CleanFile" << std::endl;
+        std::cout << "Correct Usage: ./Task2 DirtyFile CleanFile" << std::endl;
         exit(1);
     }
-    std::vector<std::string> wordVec = Task1Filter(argv[1]);
+
+    std::ifstream input(argv[1]);
+    std::vector<std::string> wordVec = Task1Filter(input);
+    input.close();
     map2(&wordVec, argv[2]);
 }

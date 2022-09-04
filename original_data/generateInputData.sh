@@ -1,4 +1,4 @@
-# Combine all the files from original_data into combined.txt
+# Combine all the files from original_data into input.txt
 startIndex=1;
 endIndex=12;
 fileName="combined.txt";
