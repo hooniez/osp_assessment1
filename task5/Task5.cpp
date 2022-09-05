@@ -7,7 +7,8 @@
 #define NUM_MAP_THREADS 13
 #define NUM_INDEX_ARRAYS 13
 #define NICEST_VALUE 19
-#define STREAM_SIZE 50000
+#define STREAM_SIZE 1000000
+//#define STREAM_SIZE 100
 #define DELAY_MICROSECONDS 100000
 
 
@@ -48,6 +49,7 @@ pthread_cond_t condIsFinished;
 std::vector<int> numTasks (NUM_MAP_THREADS, 0);
 
 pthread_mutex_t mutexNumTasks;
+pthread_cond_t condNumTasks;
 
 bool streamAvailable = false;
 
@@ -59,7 +61,7 @@ enum Finished {
 
 Finished isFinished = none;
 
-
+std::ofstream output("output.txt");
 
 
 pthread_mutex_t mutexFileNames;
@@ -69,18 +71,32 @@ std::vector<std::string> fileNames;
 std::vector<std::string> wordVec;
 
 std::vector<std::vector<std::string>> words3;
+std::vector<std::string> reducedWords3;
 std::vector<std::vector<std::string>> words4;
+std::vector<std::string> reducedWords4;
 std::vector<std::vector<std::string>> words5;
+std::vector<std::string> reducedWords5;
 std::vector<std::vector<std::string>> words6;
+std::vector<std::string> reducedWords6;
 std::vector<std::vector<std::string>> words7;
+std::vector<std::string> reducedWords7;
 std::vector<std::vector<std::string>> words8;
+std::vector<std::string> reducedWords8;
 std::vector<std::vector<std::string>> words9;
+std::vector<std::string> reducedWords9;
 std::vector<std::vector<std::string>> words10;
+std::vector<std::string> reducedWords10;
 std::vector<std::vector<std::string>> words11;
+std::vector<std::string> reducedWords11;
 std::vector<std::vector<std::string>> words12;
+std::vector<std::string> reducedWords12;
 std::vector<std::vector<std::string>> words13;
+std::vector<std::string> reducedWords13;
 std::vector<std::vector<std::string>> words14;
+std::vector<std::string> reducedWords14;
 std::vector<std::vector<std::string>> words15;
+std::vector<std::string> reducedWords15;
+
 
 
 
@@ -104,71 +120,84 @@ inline int getBytesToRead(const std::string& fileName) {
 void* sort5(void *arg) {
     auto argument = (Argument *)arg;
     std::cout << "argument identifier: " << argument->identifier<< std::endl;
+
+    unsigned long totalNumWords = 0;
+    pthread_mutex_lock(&mutexIsFinished);
+    while (!fileAllRead) {
+        pthread_mutex_unlock(&mutexIsFinished);
+
+        std::vector<std::string>* wordsToProcess;
+        pthread_mutex_lock(&mutexNumTasks);
+        while (numTasks[argument->identifier] == 0) {
+            pthread_cond_wait(&condNumTasks, &mutexNumTasks);
+        }
+        auto& wordsVec = *argument->streamingWords;
+        wordsToProcess = &wordsVec[wordsVec.size() - numTasks[argument->identifier]];
+        totalNumWords += wordsToProcess->size();
+
+        // First decrement the number of tasks for the thread
+        numTasks[argument->identifier] -= 1;
+        pthread_mutex_unlock(&mutexNumTasks);
+
+        // Sort the given vector
+        std::sort(wordsToProcess->begin(), wordsToProcess->end(), [](const auto& a, const auto& b) {
+           return a.compare(MIN_WORD_LENGTH - 1, a.size() - (MIN_WORD_LENGTH - 1), b, MIN_WORD_LENGTH - 1, b.size() - (MIN_WORD_LENGTH) - 1) < 0;
+        });
+//        std::cout << argument->identifier << ": " <<  wordsToProcess->size() << std::endl;
+
+        pthread_mutex_lock(&mutexIsFinished);
+    }
+    pthread_mutex_unlock(&mutexIsFinished);
+
+    // Merge the intermediary results
+    std::vector<std::string> reducedWords;
+    reducedWords.reserve(totalNumWords);
+    for (const auto & vec: *argument->streamingWords) {
+        reducedWords.insert(reducedWords.end(), vec.begin(), vec.end());
+    }
+    // Sort it
+    std::sort(reducedWords.begin(), reducedWords.end(), [](const auto& a, const auto& b) {
+        return a.compare(MIN_WORD_LENGTH - 1, a.size() - (MIN_WORD_LENGTH - 1), b, MIN_WORD_LENGTH - 1, b.size() - (MIN_WORD_LENGTH) - 1) < 0;
+    });
+
+    int wordLength = argument->identifier + MIN_WORD_LENGTH;
+
+    // Create a FIFO file for write
+    pthread_mutex_lock(&mutexFileNames);
+    std::ostringstream oss;
+    oss << "fifo" << wordLength;
+    const char *fileName = oss.str().c_str();
+    if (mkfifo(fileName, 0777) == -1) {
+        if (errno != EEXIST) {
+            perror("Could not create fifo file\n");
+        }
+    }
+
+    // Store the file names and send a signal to the reduce5 thread
+    fileNames.emplace_back(fileName);
+    pthread_mutex_unlock(&mutexFileNames);
+    pthread_cond_signal(&condFileNameRead);
+
+    int fd = open(fileName, O_WRONLY );
+    if (fd == -1) {
+        perror("Error in opening a FIFO file");
+    }
+
+    // Write words to fifo
+    for (auto const &word : reducedWords) {
+        if (write(fd, word.c_str(), word.length() + 1) == -1) {
+            std::ostringstream errorMsg;
+            errorMsg << "Could not write to fifo" << fd;
+            perror(errorMsg.str().c_str());
+            break;
+        }
+    }
+
+    close(fd);
+
+    // Free later in main
     free(arg);
-//    // TODO: make the loop terminate once all files are read
-//    while (true) {
-//
-//    }
 
-
-//    auto* iVec = (std::vector<int>*)arg;
-//    int wordLength = wordVec[*iVec->begin()].length();
-//
-//    pid_t tid = syscall(__NR_gettid);
-//    std::cout << "sort5 | the thread id for fifo " << wordLength << " is: " << tid << std::endl;
-//
-//    // Change the nice values
-////    if (nice(tweakedNiceValues.at(wordLength)) == -1) {
-////        perror("Failed to set the nice value");
-////    }
-//
-//    auto start = std::chrono::high_resolution_clock::now();
-//    // Sort the index array
-//    std::sort(iVec->begin(), iVec->end(), [] (const int a, const int b) {
-//        return wordVec[a].compare(MIN_WORD_LENGTH - 1, wordVec[a].size() - (MIN_WORD_LENGTH - 1), wordVec[b], MIN_WORD_LENGTH - 1, wordVec[b].size() - (MIN_WORD_LENGTH - 1)) < 0;
-//    });
-//    auto stop = std::chrono::high_resolution_clock::now();
-//    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-//    std::cout << "Thread " << wordLength << " of size " << iVec->size() << " took " << duration.count() << " microseconds" << std::endl;
-//
-//
-//    // Create a FIFO file for write
-//    pthread_mutex_lock(&mutexFileNames);
-//    std::ostringstream oss;
-//    oss << "fifo" << wordLength;
-//    const char *fileName = oss.str().c_str();
-//    if (mkfifo(fileName, 0777) == -1) {
-//        if (errno != EEXIST) {
-//            perror("Could not create fifo file\n");
-//        }
-//    }
-//
-//    // Store the file names and send a signal to the reduce5 thread
-//    fileNames.emplace_back(fileName);
-//    pthread_mutex_unlock(&mutexFileNames);
-//    pthread_cond_signal(&condFileNameRead);
-//
-//    // Change the nice values to 19 as this thread will be IO bound for the remainder of the program
-//    if (nice(NICEST_VALUE) == -1) {
-//        perror("Failed to set the nice value");
-//    }
-//
-//    int fd = open(fileName, O_WRONLY );
-//    if (fd == -1) {
-//        perror("Error in opening a FIFO file");
-//    }
-//
-//    // Write words to fifo
-//    for (auto const i : *iVec) {
-//        if (write(fd, wordVec[i].c_str(), wordVec[i].length() + 1) == -1) {
-//            std::ostringstream errorMsg;
-//            errorMsg << "Could not write to fifo" << fd;
-//            perror(errorMsg.str().c_str());
-//            break;
-//        }
-//    }
-//
-//    close(fd);
     return arg;
 }
 
@@ -326,7 +355,6 @@ void* map5(void* arg) {
         tempWordVec.push_back(tempWord14);
         tempWordVec.push_back(tempWord15);
 
-
         // Read words
         for (int i = 0; i < STREAM_SIZE; ++i) {
             if (read(fd, word, MAX_WORD_LENGTH + 2) == -1) {
@@ -335,19 +363,26 @@ void* map5(void* arg) {
                 // Map words to appropriate vectors
                 wordLength = strlen(word);
                 if (wordLength >= MIN_WORD_LENGTH && wordLength <= MAX_WORD_LENGTH) {
+
                     tempWordVec[wordLength - MIN_WORD_LENGTH].push_back(word);
                 }
             }
         }
-//        // Update the global vectors that store words and the number of tasks for each thread
-//        pthread_mutex_lock(&mutexNumTasks);
-//        for (auto &num: numTasks) {
-//            ++num;
-//        }
-//        pthread_mutex_unlock(&mutexNumTasks);
+
+        // Update the global vectors that store words and the number of tasks for each thread
+        pthread_mutex_lock(&mutexNumTasks);
+
+        for (int i = 0; i < wordsVec.size(); ++i) {
+            wordsVec[i].push_back(tempWordVec[i]);
+        }
+
+        for (auto &num: numTasks) {
+            ++num;
+        }
+        pthread_cond_broadcast(&condNumTasks);
+        pthread_mutex_unlock(&mutexNumTasks);
+
         close(fd);
-
-
 
         pthread_mutex_lock(&mutexIsFinished);
         // If the map thread finishes first, wait until the main thread finishes processing and then sends a cond_signal
@@ -365,17 +400,7 @@ void* map5(void* arg) {
             isFinished = none;
         }
         pthread_mutex_unlock(&mutexIsFinished);
-
-
-
-
-
-
-
     }
-
-
-
 
     // Join the threads
     for (int i = 0; i < NUM_MAP_THREADS; ++i) {
@@ -388,38 +413,6 @@ void* map5(void* arg) {
 
 
 
-
-//    // Create 13 index arrays
-//    std::vector<std::vector<int>> iVecs;
-//    for (int i = 0; i < NUM_INDEX_ARRAYS; ++i) {
-//        std::vector<int> iVec;
-//        iVecs.push_back(iVec);
-//    }
-//
-//    // Index the global array
-//    for (int i = 0; i < wordVec.size(); ++i) {
-//        size_t wordLength = wordVec[i].size();
-//        if (wordLength >= MIN_WORD_LENGTH && wordLength <= MAX_WORD_LENGTH) {
-//            iVecs[wordLength - MIN_WORD_LENGTH].push_back(i);
-//        }
-//    }
-//
-//    // Create threads such that the longer it takes for an index array to be sorted, the earlier its thread starts
-//    std::vector<int> orderOfThreads = {4, 6, 3, 5, 2, 7, 8, 9, 1, 10, 11, 12, 0};
-//
-//    // Create 13 threads for map5
-//    pthread_t th[NUM_MAP_THREADS];
-//    for (int i = 0; i < NUM_MAP_THREADS; ++i) {
-//        if (pthread_create(th + i, nullptr, &sort5, &iVecs[orderOfThreads[i]]) != 0) {
-//            perror("Failed to create thread");
-//        }
-//    }
-//
-//    // After spawning the threads above, map5() has now done its duties. Set its nice value to 10.
-//    if (nice(NICEST_VALUE) == -1) {
-//        perror("Failed to set the nice value");
-//    }
-//
 
     return arg;
 }
@@ -455,17 +448,22 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // Create two threads for map5() and reduce5()
     pthread_t mapThread;
-//    pthread_mutex_init(&mutexFileNames, nullptr);
-//    pthread_cond_init(&condFileNameRead, nullptr);
+    pthread_t reduceThread;
     pthread_mutex_init(&mutexNumWords, nullptr);
     pthread_mutex_init(&mutexIsFinished, nullptr);
     pthread_mutex_init(&mutexNumTasks, nullptr);
     pthread_cond_init(&condIsFinished, nullptr);
+    pthread_cond_init(&condNumTasks, nullptr);
 
+    // Create map thread
     if (pthread_create(&mapThread, nullptr, &map5, (void *)fifoName) != 0) {
         perror("Failed to create map5 thread");
+    }
+
+    // Create reduce thread
+    if (pthread_create(&reduceThread, nullptr, &reduce5, argv[1]) != 0) {
+        perror("Failed to create reduce5 thread");
     }
 
 
@@ -521,27 +519,18 @@ int main(int argc, char* argv[]) {
     }
     close(fd);
 
-
-
-    // Stream words at a constant rate
-
-
-//    if (pthread_create(&reduceThread, nullptr, &reduce5, argv[2]) != 0) {
-//        perror("Failed to create reduce5 thread");
-//    }
-//
-//    // Join two of the threads above
     if (pthread_join(mapThread, nullptr) != 0) {
         perror("Failed to join map5 thread");
     }
-//    if (pthread_join(reduceThread, nullptr) != 0) {
-//        perror("Failed to join reduce5 thread");
-//    }
-//    pthread_mutex_destroy(&mutexFileNames);
-//    pthread_cond_destroy(&condFileNameRead);
+
+    if (pthread_join(reduceThread, nullptr) != 0) {
+        perror("Failed to join reduce5 thread");
+    }
+
     pthread_mutex_destroy(&mutexNumWords);
     pthread_mutex_destroy(&mutexIsFinished);
     pthread_mutex_destroy(&mutexNumTasks);
     pthread_cond_destroy(&condIsFinished);
+    pthread_cond_destroy(&condNumTasks);
 
 }
