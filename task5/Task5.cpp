@@ -7,10 +7,8 @@
 #define NUM_MAP_THREADS 13
 #define NUM_INDEX_ARRAYS 13
 #define NICEST_VALUE 19
-#define STREAM_SIZE 1000
-//#define STREAM_SIZE 100
-#define DELAY_MICROSECONDS 100000
-
+#define STREAM_SIZE 300000
+#define DELAY_MICROSECONDS 1000
 
 #include <pthread.h>
 #include <sys/stat.h>
@@ -36,7 +34,6 @@ struct Argument {
 };
 
 pthread_mutex_t mutexNumWords;
-unsigned long numWords;
 bool fileAllRead = false;
 
 std::vector<std::string> sVec;
@@ -52,7 +49,6 @@ pthread_cond_t condNumTasks;
 
 std::vector<int> niceValues (NUM_MAP_THREADS, 0);
 std::vector<unsigned long> numWordsThread (NUM_MAP_THREADS, 0);
-
 
 enum Finished {
     none,
@@ -129,10 +125,12 @@ void* sort5(void *arg) {
 
         std::vector<std::string>* wordsToProcess;
         pthread_mutex_lock(&mutexNumTasks);
+        std::cout << "Worker thread waits for a task" << std::endl;
         while (numTasks[argument->identifier] == 0) {
             pthread_cond_wait(&condNumTasks, &mutexNumTasks);
         }
         // Change the nice value
+        std::cout << "Change the nice value of a worker thread" << std::endl;
         if (nice(niceValues[argument->identifier]) == -1) {
             perror("Failed to set the nice value");
         }
@@ -144,29 +142,15 @@ void* sort5(void *arg) {
         pthread_mutex_unlock(&mutexNumTasks);
 
         // Sort the given vector
+        std::cout << "A worker thread sorts a stream" << std::endl;
         std::sort(wordsToProcess->begin(), wordsToProcess->end(), [](auto& a, auto& b) {
-           return a.compare(MIN_WORD_LENGTH - 1, a.size() - (MIN_WORD_LENGTH - 1), b, MIN_WORD_LENGTH - 1, b.size() - (MIN_WORD_LENGTH - 1)) < 0;
+           return a.compare(MIN_WORD_LENGTH - 1, a.size() - (MIN_WORD_LENGTH - 1), b, MIN_WORD_LENGTH - 1, b.size() - (MIN_WORD_LENGTH - 1)) > 0;
         });
-
 
         pthread_mutex_lock(&mutexIsFinished);
     }
     pthread_mutex_unlock(&mutexIsFinished);
 
-    // Merge the intermediary results
-    std::vector<std::string> reducedWords;
-    reducedWords.reserve(totalNumWords);
-    for (const auto & vec: *argument->streamingWords) {
-        reducedWords.insert(reducedWords.end(), vec.begin(), vec.end());
-    }
-    // Sort it
-    std::sort(reducedWords.begin(), reducedWords.end(), [](auto& a, auto& b) {
-        return a.compare(MIN_WORD_LENGTH - 1, a.size() - (MIN_WORD_LENGTH - 1), b, MIN_WORD_LENGTH - 1, b.size() - (MIN_WORD_LENGTH - 1)) < 0;
-    });
-//
-//    if (argument->identifier == 1) {
-//        std::cout << reducedWords[0] << std::endl;
-//    }
 
     int wordLength = argument->identifier + MIN_WORD_LENGTH;
 
@@ -191,19 +175,43 @@ void* sort5(void *arg) {
         perror("Error in opening a FIFO file");
     }
 
-    // Write words to fifo
-    for (auto const &word : reducedWords) {
-        if (write(fd, word.c_str(), word.length() + 1) == -1) {
+    std::vector<int> lengths;
+    for (int i = 0; i < wordsVec.size(); ++i) {
+        // Insert the last index
+        lengths.push_back(wordsVec[i].size() - 1);
+    }
+
+    std::cout << "A worker thread reduces sorted vectors by writing to a FIFO" << std::endl;
+    int lowestIdx;
+    while (!wordsVec.empty()) {
+        lowestIdx = 0;
+        // Iterate through wordsVec[i] from the last element
+        for (int i = 0; i < wordsVec.size(); ++i) {
+            if (wordsVec[i][lengths[i]].compare(MIN_WORD_LENGTH - 1,
+                                                wordsVec[i][lengths[i]].size() - (MIN_WORD_LENGTH - 1),
+                                                wordsVec[lowestIdx][lengths[lowestIdx]],
+                                                MIN_WORD_LENGTH - 1,
+                                                wordsVec[lowestIdx][lengths[lowestIdx]].size() - (MIN_WORD_LENGTH - 1)) < 0 ) {
+                lowestIdx = i;
+            }
+        }
+        // Write the lowest word to FIFO
+        if (write(fd, wordsVec[lowestIdx][lengths[lowestIdx]].c_str(), wordsVec[lowestIdx][lengths[lowestIdx]].length() + 1) == -1) {
             std::ostringstream errorMsg;
             errorMsg << "Could not write to fifo" << fd;
             perror(errorMsg.str().c_str());
-            break;
+        }
+        // Erase the word
+        wordsVec[lowestIdx].erase(wordsVec[lowestIdx].begin() + lengths[lowestIdx]);
+        // Decrement the length
+        lengths[lowestIdx] -= 1;
+        if (wordsVec[lowestIdx].empty()) {
+            wordsVec.erase(wordsVec.begin() + lowestIdx);
+            lengths.erase(lengths.begin() + lowestIdx);
         }
     }
 
     close(fd);
-
-    // Free later in main
     free(arg);
 
     return arg;
@@ -216,13 +224,14 @@ void* reduce5(void *arg) {
     pthread_mutex_lock(&mutexFileNames);
     // Repeat the while loop as long as there is a file to read from map5()
     while (fileNames.size() != NUM_MAP_THREADS) {
+        std::cout << "reduce5() checks whether words can be reduced" << std::endl;
         pthread_cond_wait(&condFileNameRead, &mutexFileNames);
         // pthread_cond_wait is equivalent to:
         // pthread_mutex_unlock(&mutexFileNames);
         // wait for signal on condFileNameRead;
         // pthread_mutex_lock(&mutexFileNames);
     }
-
+    std::cout << "reduce5() now reduces" << std::endl;
     // Convert each file name into a file descriptor and store it in fds
     std::vector<int> fds;
     for (const auto &fileName: fileNames) {
@@ -257,6 +266,7 @@ void* reduce5(void *arg) {
     int lowestOrderIdx = 0;
     std::string outputFileName((char *)arg);
     std::ofstream outputFile(outputFileName);
+    std::cout << "reduce5 reads from a FIFO" << std::endl;
     while (!fds.empty()) {
         // Find the actual index that contains the lowest word in lexical order
         for (int i = 0; i < words.size(); ++i) {
@@ -292,8 +302,6 @@ void* map5(void* arg) {
     pid_t x = syscall(__NR_gettid);
     std::cout << "map5 | the thread id " << " is: " << x << std::endl;
 
-    // Create worker threads and pass to each fo them a vector it is to sort
-
     // First store the vectors inside another vector for distribution
     std::vector<std::vector<std::vector<std::string>>> wordsVec;
     wordsVec.push_back(words3);
@@ -310,6 +318,7 @@ void* map5(void* arg) {
     wordsVec.push_back(words14);
     wordsVec.push_back(words15);
 
+    // Create worker threads and pass to each fo them a vector it is to sort
     pthread_t th[NUM_MAP_THREADS];
     for (int i = 0; i < NUM_MAP_THREADS; ++i) {
         auto *argument = static_cast<Argument *>(malloc(sizeof(struct Argument)));
@@ -318,6 +327,8 @@ void* map5(void* arg) {
 
         if (pthread_create(th + i, nullptr, &sort5, (void*)argument) != 0) {
             perror("Failed to create thread");
+        } else {
+            std::cout << "Worker thread " << i << " is created " << std::endl;
         }
     }
 
@@ -364,6 +375,7 @@ void* map5(void* arg) {
         tempWordVec.push_back(tempWord15);
 
         // Read words
+        std::cout << "Map thread reads " << std::endl;
         for (int i = 0; i < STREAM_SIZE; ++i) {
             if (read(fd, word, MAX_WORD_LENGTH + 2) == -1) {
                 perror("Couldn't read from FIFO");
@@ -377,6 +389,7 @@ void* map5(void* arg) {
         }
 
         // Update the global vectors that store words and the number of tasks for each thread
+        std::cout << "Map thread updates vectors for worker threads to process and keeps track of the number of words read" << std::endl;
         pthread_mutex_lock(&mutexNumTasks);
 
         for (int i = 0; i < wordsVec.size(); ++i) {
@@ -386,8 +399,10 @@ void* map5(void* arg) {
             numWordsThread[i] += tempWordVec[i].size();
         }
 
+        std::cout << "Map thread assigns nice values" << std::endl;
         assignNiceValues();
 
+        std::cout << "Map thread increases the number of tasks for each thread" << std::endl;
         for (auto &num: numTasks) {
             ++num;
         }
@@ -418,12 +433,10 @@ void* map5(void* arg) {
     for (int i = 0; i < NUM_MAP_THREADS; ++i) {
         if (pthread_join(th[i], nullptr) != 0) {
             perror("Failed to join thread");
+        } else {
+            std::cout << "Worker thread " << i << " is joined " << std::endl;
         }
     }
-
-
-
-
 
     return arg;
 }
@@ -445,9 +458,11 @@ int main(int argc, char* argv[]) {
 
     // Read the whole original (dirty) file into a string array within Task1Filter and then
     // apply the filtering rule as well as remove duplicates. After that, store the result in sVec.
+    std::cout << "Task1Filter filters input" << std::endl;
     sVec = Task1Filter(std::cin);
 
     // For outputting a random entry to a FIFO file, shuffle sVec.
+    std::cout << "Filtered input is now shuffled" << std::endl;
     unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
     std::shuffle(sVec.begin(), sVec.end(), std::default_random_engine(seed));
 
@@ -470,13 +485,16 @@ int main(int argc, char* argv[]) {
     // Create map thread
     if (pthread_create(&mapThread, nullptr, &map5, (void *)fifoName) != 0) {
         perror("Failed to create map5 thread");
+    } else {
+        std::cout << "map5 thread is created" << std::endl;
     }
 
     // Create reduce thread
     if (pthread_create(&reduceThread, nullptr, &reduce5, argv[1]) != 0) {
         perror("Failed to create reduce5 thread");
+    } else {
+        std::cout << "reduce5 thread is created" << std::endl;
     }
-
 
     int fd = open(fifoName, O_WRONLY);
     if (fd == -1) {
@@ -487,6 +505,7 @@ int main(int argc, char* argv[]) {
     unsigned long maxIdx = sVec.size() - 1;
     std::string invalidWord;
     while (currIdx <= maxIdx) {
+        std::cout << "Server streams" << std::endl;
         for (int i = 0; i < STREAM_SIZE; i++) {
             // If there is a word in a vector to write
             if (currIdx <= maxIdx) {
@@ -532,10 +551,14 @@ int main(int argc, char* argv[]) {
 
     if (pthread_join(mapThread, nullptr) != 0) {
         perror("Failed to join map5 thread");
+    } else {
+        std::cout << "map5 thread is joined" << std::endl;
     }
 
     if (pthread_join(reduceThread, nullptr) != 0) {
         perror("Failed to join reduce5 thread");
+    } else {
+        std::cout << "reduce5 thread is joined" << std::endl;
     }
 
     pthread_mutex_destroy(&mutexNumWords);
