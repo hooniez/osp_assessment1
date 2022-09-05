@@ -7,7 +7,7 @@
 #define NUM_MAP_THREADS 13
 #define NUM_INDEX_ARRAYS 13
 #define NICEST_VALUE 19
-#define STREAM_SIZE 1000000
+#define STREAM_SIZE 1000
 //#define STREAM_SIZE 100
 #define DELAY_MICROSECONDS 100000
 
@@ -19,16 +19,15 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/syscall.h>
-#include <sys/resource.h>
 #include <chrono>
 #include <random>
-#include <string.h>
+#include <cstring>
+#include <cmath>
 
 #include <vector>
 #include "../task1/Task1Filter.cpp"
 #include <algorithm>
 #include <sstream>
-#include <map>
 #include <memory>
 
 struct Argument {
@@ -51,7 +50,9 @@ std::vector<int> numTasks (NUM_MAP_THREADS, 0);
 pthread_mutex_t mutexNumTasks;
 pthread_cond_t condNumTasks;
 
-bool streamAvailable = false;
+std::vector<int> niceValues (NUM_MAP_THREADS, 0);
+std::vector<unsigned long> numWordsThread (NUM_MAP_THREADS, 0);
+
 
 enum Finished {
     none,
@@ -61,9 +62,6 @@ enum Finished {
 
 Finished isFinished = none;
 
-std::ofstream output("output.txt");
-
-
 pthread_mutex_t mutexFileNames;
 pthread_cond_t condFileNameRead;
 
@@ -71,44 +69,45 @@ std::vector<std::string> fileNames;
 std::vector<std::string> wordVec;
 
 std::vector<std::vector<std::string>> words3;
-std::vector<std::string> reducedWords3;
 std::vector<std::vector<std::string>> words4;
-std::vector<std::string> reducedWords4;
 std::vector<std::vector<std::string>> words5;
-std::vector<std::string> reducedWords5;
 std::vector<std::vector<std::string>> words6;
-std::vector<std::string> reducedWords6;
 std::vector<std::vector<std::string>> words7;
-std::vector<std::string> reducedWords7;
 std::vector<std::vector<std::string>> words8;
-std::vector<std::string> reducedWords8;
 std::vector<std::vector<std::string>> words9;
-std::vector<std::string> reducedWords9;
 std::vector<std::vector<std::string>> words10;
-std::vector<std::string> reducedWords10;
 std::vector<std::vector<std::string>> words11;
-std::vector<std::string> reducedWords11;
 std::vector<std::vector<std::string>> words12;
-std::vector<std::string> reducedWords12;
 std::vector<std::vector<std::string>> words13;
-std::vector<std::string> reducedWords13;
 std::vector<std::vector<std::string>> words14;
-std::vector<std::string> reducedWords14;
 std::vector<std::vector<std::string>> words15;
-std::vector<std::string> reducedWords15;
+
+void assignNiceValues() {
+    int maxNumIdx = 0;
+    unsigned long totalNum = 0;
+    for (int i = 0; i < numWordsThread.size(); ++i) {
+        totalNum += numWordsThread[i];
+        if (numWordsThread[i] > numWordsThread[maxNumIdx]) {
+            maxNumIdx = i;
+        }
+    }
 
 
+    // The nice value at maxNumIdx in niceValues will be 0 as it needs to process the most number of words
+    niceValues[maxNumIdx] = 0;
+    // workRatios stores the percentile distribution of workload for each thread
+    std::vector<double> workRatios (NUM_MAP_THREADS, 0);
+    for (int i = 0; i < numWordsThread.size(); ++i) {
+        workRatios[i] = (numWordsThread[i] / (double)totalNum);
+    }
+    // Find out the total weight (explained in the task 4 report)
+    int totalWeight = 1024 / workRatios[maxNumIdx];
 
-
-//std::map<int, int> tweakedNiceValues = {{3,  19}, {4, 7}, {5, 3}, {6, 1},
-//                                        {7,  0}, {8, 1}, {9, 0}, {10, 3},
-//                                        {11, 6}, {12, 7 }, {13, 13}, {14, 14},
-//                                        {15, 19}};
-
-//std::map<int, int> initialNiceValues = {{3, 12}, {4, 7}, {5, 2}, {6, 1},
-//                                           {7, 0}, {8, 1}, {9, 1}, {10, 2},
-//                                           {11, 3}, {12, 4 }, {13, 7}, {14, 7},
-//                                           {15, 9}};
+    // Assign appropriate nice values to threads
+    for (int i = 0; i < niceValues.size(); ++i) {
+        niceValues[i] = round(log2(1024 / (workRatios[i] * totalWeight)) / log2(1.25));
+    }
+}
 
 inline int getBytesToRead(const std::string& fileName) {
     // Every file to be passed as an argument will start with 'fifo'.
@@ -122,8 +121,10 @@ void* sort5(void *arg) {
     std::cout << "argument identifier: " << argument->identifier<< std::endl;
 
     unsigned long totalNumWords = 0;
+    auto& wordsVec = *argument->streamingWords;
     pthread_mutex_lock(&mutexIsFinished);
     while (!fileAllRead) {
+
         pthread_mutex_unlock(&mutexIsFinished);
 
         std::vector<std::string>* wordsToProcess;
@@ -131,7 +132,10 @@ void* sort5(void *arg) {
         while (numTasks[argument->identifier] == 0) {
             pthread_cond_wait(&condNumTasks, &mutexNumTasks);
         }
-        auto& wordsVec = *argument->streamingWords;
+        // Change the nice value
+        if (nice(niceValues[argument->identifier]) == -1) {
+            perror("Failed to set the nice value");
+        }
         wordsToProcess = &wordsVec[wordsVec.size() - numTasks[argument->identifier]];
         totalNumWords += wordsToProcess->size();
 
@@ -140,10 +144,10 @@ void* sort5(void *arg) {
         pthread_mutex_unlock(&mutexNumTasks);
 
         // Sort the given vector
-        std::sort(wordsToProcess->begin(), wordsToProcess->end(), [](const auto& a, const auto& b) {
-           return a.compare(MIN_WORD_LENGTH - 1, a.size() - (MIN_WORD_LENGTH - 1), b, MIN_WORD_LENGTH - 1, b.size() - (MIN_WORD_LENGTH) - 1) < 0;
+        std::sort(wordsToProcess->begin(), wordsToProcess->end(), [](auto& a, auto& b) {
+           return a.compare(MIN_WORD_LENGTH - 1, a.size() - (MIN_WORD_LENGTH - 1), b, MIN_WORD_LENGTH - 1, b.size() - (MIN_WORD_LENGTH - 1)) < 0;
         });
-//        std::cout << argument->identifier << ": " <<  wordsToProcess->size() << std::endl;
+
 
         pthread_mutex_lock(&mutexIsFinished);
     }
@@ -156,9 +160,13 @@ void* sort5(void *arg) {
         reducedWords.insert(reducedWords.end(), vec.begin(), vec.end());
     }
     // Sort it
-    std::sort(reducedWords.begin(), reducedWords.end(), [](const auto& a, const auto& b) {
-        return a.compare(MIN_WORD_LENGTH - 1, a.size() - (MIN_WORD_LENGTH - 1), b, MIN_WORD_LENGTH - 1, b.size() - (MIN_WORD_LENGTH) - 1) < 0;
+    std::sort(reducedWords.begin(), reducedWords.end(), [](auto& a, auto& b) {
+        return a.compare(MIN_WORD_LENGTH - 1, a.size() - (MIN_WORD_LENGTH - 1), b, MIN_WORD_LENGTH - 1, b.size() - (MIN_WORD_LENGTH - 1)) < 0;
     });
+//
+//    if (argument->identifier == 1) {
+//        std::cout << reducedWords[0] << std::endl;
+//    }
 
     int wordLength = argument->identifier + MIN_WORD_LENGTH;
 
@@ -363,7 +371,6 @@ void* map5(void* arg) {
                 // Map words to appropriate vectors
                 wordLength = strlen(word);
                 if (wordLength >= MIN_WORD_LENGTH && wordLength <= MAX_WORD_LENGTH) {
-
                     tempWordVec[wordLength - MIN_WORD_LENGTH].push_back(word);
                 }
             }
@@ -373,8 +380,13 @@ void* map5(void* arg) {
         pthread_mutex_lock(&mutexNumTasks);
 
         for (int i = 0; i < wordsVec.size(); ++i) {
+            // Push words just read into appropriate vectors to be processed in sort5
             wordsVec[i].push_back(tempWordVec[i]);
+            // Record the number of words just read to assign appropriate nice values
+            numWordsThread[i] += tempWordVec[i].size();
         }
+
+        assignNiceValues();
 
         for (auto &num: numTasks) {
             ++num;
@@ -404,7 +416,6 @@ void* map5(void* arg) {
 
     // Join the threads
     for (int i = 0; i < NUM_MAP_THREADS; ++i) {
-
         if (pthread_join(th[i], nullptr) != 0) {
             perror("Failed to join thread");
         }
@@ -532,5 +543,4 @@ int main(int argc, char* argv[]) {
     pthread_mutex_destroy(&mutexNumTasks);
     pthread_cond_destroy(&condIsFinished);
     pthread_cond_destroy(&condNumTasks);
-
 }
