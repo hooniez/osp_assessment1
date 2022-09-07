@@ -5,11 +5,9 @@
 #define MIN_WORD_LENGTH 3
 #define MAX_WORD_LENGTH 15
 
-#include <fstream>
 #include <iostream>
 #include <vector>
 #include <string>
-#include <cmath>
 #include <algorithm>
 
 // Task1Filter returns a vector of words that are filtered by the rule mentioned in README.md

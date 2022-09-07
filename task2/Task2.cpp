@@ -1,15 +1,13 @@
 #include <vector>
 #include <string>
-#include <fstream>
 #include <iostream>
 #include <algorithm>
 #include <memory>
 #include <sstream>
+#include <fstream>
 
-#include <sys/types.h>
 #include <unistd.h>
 #include <sys/wait.h>
-#include <sys/single_threaded.h>
 
 #include "../task1/Task1Filter.cpp"
 
@@ -17,7 +15,8 @@
 #define MAX_WORD_LENGTH 15
 #define NUM_CHILDREN 13
 
-void reduce(const std::string & finalOutput) {
+void reduce2(const std::string & finalOutput) {
+    std::cout << "Reduce2() now reduces mapped words stored in regular files" << std::endl;
     // Store pointers to ifstream objects (files) in a vector
     std::vector<std::shared_ptr<std::ifstream>> inputFiles;
     for (int i = 0; i < NUM_CHILDREN; ++i) {
@@ -43,7 +42,6 @@ void reduce(const std::string & finalOutput) {
         inputFiles[indexToErase]->close();
         inputFiles.erase(inputFiles.begin() + indexToErase);
         words.erase(words.begin() + indexToErase);
-
     }
 
     // Write the lowest word in lexical order to a file
@@ -56,7 +54,6 @@ void reduce(const std::string & finalOutput) {
                 lowestOrderIdx = i;
             }
         }
-
         outputFile << words[lowestOrderIdx] << std::endl;
 
         // Read another word from the ifstream from which the lowest word was just found
@@ -69,13 +66,10 @@ void reduce(const std::string & finalOutput) {
             lowestOrderIdx = 0;
         }
     }
-
     outputFile.close();
 }
 
 void map2(const std::vector<std::string> *wordVec, const std::string & finalOutput) {
-
-
     std::vector<std::string> wordVec3;
     std::vector<std::string> wordVec4;
     std::vector<std::string> wordVec5;
@@ -90,7 +84,7 @@ void map2(const std::vector<std::string> *wordVec, const std::string & finalOutp
     std::vector<std::string> wordVec14;
     std::vector<std::string> wordVec15;
 
-
+    std::cout << "Map2 now maps words based on length" << std::endl;
     for (const auto &word: *wordVec) {
         size_t lineLength = word.size();
         if (lineLength == 3) {
@@ -122,7 +116,6 @@ void map2(const std::vector<std::string> *wordVec, const std::string & finalOutp
         }
     }
 
-
     std::vector<std::vector<std::string>> word2dVec;
     word2dVec.push_back(wordVec3);
     word2dVec.push_back(wordVec4);
@@ -145,40 +138,40 @@ void map2(const std::vector<std::string> *wordVec, const std::string & finalOutp
             exit(1);
         } else if (pid == 0) {
             pid_t processId = getpid();
-            std::cout << "map | the process id for " << word2dVec[i][0].size() << " letter words is: " << processId << std::endl;
-
+            std::cout << "map | the created process id for " << word2dVec[i][0].size() << " letter words is: " << processId << std::endl;
+            std::cout << word2dVec[i][0].size() << " letter words are now being sorted" << std::endl;
             std::sort(word2dVec[i].begin(), word2dVec[i].end(),
                              [](const std::string &a, const std::string &b) {
                 return a.compare(MIN_WORD_LENGTH - 1, a.size() - (MIN_WORD_LENGTH - 1), b, MIN_WORD_LENGTH - 1, b.size() - (MIN_WORD_LENGTH - 1)) < 0;
 		    });
 
+            std::cout << word2dVec[i][0].size() << " letter sorted words are now written to an output file" << std::endl;
             std::ofstream output("output" + std::to_string(i) + ".txt");
-            for (auto word : word2dVec[i]) {
+            for (const auto& word : word2dVec[i]) {
                 output << word << std::endl;
             }
             output.close();
             exit(0);
         }
-
     }
 
 
     for (int i = 0; i < NUM_CHILDREN; ++i) {
-        wait(NULL);
+        wait(nullptr);
     }
-    reduce(finalOutput);
-
+    reduce2(finalOutput);
 }
 
 int main(int argc, char *argv[]) {
     pid_t processId = getpid();
-    std::cout << "main | the process id " << " is: " << processId << std::endl;
+    std::cout << "main | the created process id " << "is: " << processId << std::endl;
     if (argc != 3) {
         std::cout << "Correct Usage: ./Task2 DirtyFile CleanFile" << std::endl;
         exit(1);
     }
 
     std::ifstream input(argv[1]);
+    std::cout << "Task1Filter filters input" << std::endl;
     std::vector<std::string> wordVec = Task1Filter(input);
     input.close();
     map2(&wordVec, argv[2]);

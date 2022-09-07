@@ -21,6 +21,7 @@
 #include <random>
 #include <cstring>
 #include <cmath>
+#include <fstream>
 
 #include <vector>
 #include "../task1/Task1Filter.cpp"
@@ -28,42 +29,38 @@
 #include <sstream>
 #include <memory>
 
+// An argument to pass to each worker thread
 struct Argument {
     int identifier;
     std::vector<std::vector<std::string>>* streamingWords;
 };
 
-pthread_mutex_t mutexNumWords;
-bool fileAllRead = false;
-
-std::vector<std::string> sVec;
-
+// Global variables to synchronise the streaming server and the map thread
 pthread_mutex_t mutexIsFinished;
 pthread_cond_t condIsFinished;
-
-// All worker threads have 0 task to begin with
-std::vector<int> numTasks (NUM_MAP_THREADS, 0);
-
-pthread_mutex_t mutexNumTasks;
-pthread_cond_t condNumTasks;
-
-std::vector<int> niceValues (NUM_MAP_THREADS, 0);
-std::vector<unsigned long> numWordsThread (NUM_MAP_THREADS, 0);
-
 enum Finished {
     none,
     stream,
     map,
 };
-
 Finished isFinished = none;
+bool fileAllRead = false;
 
+// All worker threads have 0 task to begin with
+std::vector<int> numTasks (NUM_MAP_THREADS, 0);
+pthread_mutex_t mutexNumTasks;
+pthread_cond_t condNumTasks;
+
+// Global variables to help change the nice value of each worker thread per stream
+std::vector<int> niceValues (NUM_MAP_THREADS, 0);
+std::vector<unsigned long> numWordsThread (NUM_MAP_THREADS, 0);
+
+// Global variables for reduce to find out when all the worker threads are ready to write
 pthread_mutex_t mutexFileNames;
 pthread_cond_t condFileNameRead;
-
 std::vector<std::string> fileNames;
-std::vector<std::string> wordVec;
 
+// Global variables that worker threads modify
 std::vector<std::vector<std::string>> words3;
 std::vector<std::vector<std::string>> words4;
 std::vector<std::vector<std::string>> words5;
@@ -88,20 +85,19 @@ void assignNiceValues() {
         }
     }
 
-
     // The nice value at maxNumIdx in niceValues will be 0 as it needs to process the most number of words
     niceValues[maxNumIdx] = 0;
     // workRatios stores the percentile distribution of workload for each thread
     std::vector<double> workRatios (NUM_MAP_THREADS, 0);
-    for (int i = 0; i < numWordsThread.size(); ++i) {
-        workRatios[i] = (numWordsThread[i] / (double)totalNum);
+    for (size_t i = 0; i < numWordsThread.size(); ++i) {
+        workRatios[i] = ((double)numWordsThread[i] / (double)totalNum);
     }
     // Find out the total weight (explained in the task 4 report)
-    int totalWeight = 1024 / workRatios[maxNumIdx];
+    int totalWeight = (int)(1024 / workRatios[maxNumIdx]);
 
     // Assign appropriate nice values to threads
     for (int i = 0; i < niceValues.size(); ++i) {
-        niceValues[i] = round(log2(1024 / (workRatios[i] * totalWeight)) / log2(1.25));
+        niceValues[i] = (int)round(log2(1024 / (workRatios[i] * totalWeight)) / log2(1.25));
     }
 }
 
@@ -158,7 +154,8 @@ void* sort5(void *arg) {
     pthread_mutex_lock(&mutexFileNames);
     std::ostringstream oss;
     oss << "fifo" << wordLength;
-    const char *fileName = oss.str().c_str();
+    std::string tmp = oss.str();
+    const char *fileName = tmp.c_str();
     if (mkfifo(fileName, 0777) == -1) {
         if (errno != EEXIST) {
             perror("Could not create fifo file\n");
@@ -176,9 +173,9 @@ void* sort5(void *arg) {
     }
 
     std::vector<int> lengths;
-    for (int i = 0; i < wordsVec.size(); ++i) {
+    for (auto & i : wordsVec) {
         // Insert the last index
-        lengths.push_back(wordsVec[i].size() - 1);
+        lengths.push_back((int)i.size() - 1);
     }
 
     std::cout << "A worker thread reduces sorted vectors by writing to a FIFO" << std::endl;
@@ -214,11 +211,11 @@ void* sort5(void *arg) {
     close(fd);
     free(arg);
 
-    return arg;
+    return nullptr;
 }
 
 void* reduce5(void *arg) {
-    pid_t tid = syscall(__NR_gettid);
+    auto tid = (pid_t)syscall(__NR_gettid);
     std::cout << "reduce5 | the thread id " << " is: " << tid << std::endl;
 
     pthread_mutex_lock(&mutexFileNames);
@@ -299,8 +296,8 @@ void* reduce5(void *arg) {
 
 
 void* map5(void* arg) {
-    pid_t x = syscall(__NR_gettid);
-    std::cout << "map5 | the thread id " << " is: " << x << std::endl;
+    auto tid = (pid_t)syscall(__NR_gettid);
+    std::cout << "map5 | the thread id " << " is: " << tid << std::endl;
 
     // First store the vectors inside another vector for distribution
     std::vector<std::vector<std::vector<std::string>>> wordsVec;
@@ -444,27 +441,28 @@ void* map5(void* arg) {
 
 
 int main(int argc, char* argv[]) {
-    pid_t x = syscall(__NR_gettid);
-    std::cout << "main | the thread id " << " is: " << x << std::endl;
+    auto tid = (pid_t)syscall(__NR_gettid);
+    std::cout << "main | the thread id " << " is: " << tid << std::endl;
 
     /*
      * As Ron said in the discussion forum, this program reads a dirty file using std::in
      * Please execute this program like this: cat DirtyFile | ./Task5 CleanFile
      */
     if (argc != 2) {
-        std::cout << "Correct Usage: cat DirtyFile | ./Task5 CleanFile" << std::endl;
+        std::cout << "Correct Usage: "
+                     "PAra" << std::endl;
         exit(1);
     }
 
     // Read the whole original (dirty) file into a string array within Task1Filter and then
     // apply the filtering rule as well as remove duplicates. After that, store the result in sVec.
     std::cout << "Task1Filter filters input" << std::endl;
-    sVec = Task1Filter(std::cin);
+    std::vector<std::string> filteredData = Task1Filter(std::cin);
 
     // For outputting a random entry to a FIFO file, shuffle sVec.
     std::cout << "Filtered input is now shuffled" << std::endl;
     unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
-    std::shuffle(sVec.begin(), sVec.end(), std::default_random_engine(seed));
+    std::shuffle(filteredData.begin(), filteredData.end(), std::default_random_engine(seed));
 
     // Create a fifo file to enable communication with map5 thread
     const char *fifoName = "stream";
@@ -476,7 +474,6 @@ int main(int argc, char* argv[]) {
 
     pthread_t mapThread;
     pthread_t reduceThread;
-    pthread_mutex_init(&mutexNumWords, nullptr);
     pthread_mutex_init(&mutexIsFinished, nullptr);
     pthread_mutex_init(&mutexNumTasks, nullptr);
     pthread_cond_init(&condIsFinished, nullptr);
@@ -502,14 +499,14 @@ int main(int argc, char* argv[]) {
     }
 
     unsigned long currIdx = 0;
-    unsigned long maxIdx = sVec.size() - 1;
+    unsigned long maxIdx = filteredData.size() - 1;
     std::string invalidWord;
     while (currIdx <= maxIdx) {
         std::cout << "Server streams" << std::endl;
         for (int i = 0; i < STREAM_SIZE; i++) {
             // If there is a word in a vector to write
             if (currIdx <= maxIdx) {
-                if (write(fd, sVec[currIdx].c_str(), MAX_WORD_LENGTH + 2) == -1) {
+                if (write(fd, filteredData[currIdx].c_str(), MAX_WORD_LENGTH + 2) == -1) {
                     perror("Could not write to FIFO");
                 }
             } else {
@@ -561,7 +558,6 @@ int main(int argc, char* argv[]) {
         std::cout << "reduce5 thread is joined" << std::endl;
     }
 
-    pthread_mutex_destroy(&mutexNumWords);
     pthread_mutex_destroy(&mutexIsFinished);
     pthread_mutex_destroy(&mutexNumTasks);
     pthread_cond_destroy(&condIsFinished);

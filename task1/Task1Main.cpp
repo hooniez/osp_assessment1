@@ -3,6 +3,7 @@
 //
 #include <iostream>
 #include <vector>
+#include <fstream>
 #include "Task1Filter.cpp"
 
 int main(int argc, char *argv[]) {
