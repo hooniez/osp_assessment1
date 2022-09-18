@@ -10,6 +10,7 @@
 #include <sys/wait.h>
 
 #include "../task1/Task1Filter.cpp"
+#include <sys/single_threaded.h>
 
 #define MIN_WORD_LENGTH 3
 #define MAX_WORD_LENGTH 15
